@@ -1,0 +1,1643 @@
+Disassembly Listing for UpDown
+Generated From:
+/Users/lees/MPLABXProjects/UpDown.X/dist/default/debug/UpDown.X.debug.elf
+May 15, 2017 4:03:27 PM
+
+---  /Users/lees/MPLABXProjects/UpDown.X/main.c  --------------------------------------------------------
+1:                   /* 
+2:                    * File:   main.c
+3:                    * Author: leez
+4:                    *
+5:                    * Created on April 19, 2017, 1:09 PM
+6:                    */
+7:                   
+8:                   #include <stdio.h>
+9:                   #include <stdlib.h>
+10:                  //#include <xc.h>
+11:                  #include <proc/p32mx460f512l.h>
+12:                  #include <sys/attribs.h>
+13:                  #include "lgs_logevents.h"
+14:                  #include "cerabot.h"
+15:                  
+16:                  // LEDs are on PortB
+17:                  __TRISBbits_t ledTrisBits; // PortB State Input or Output
+18:                  __PORTBbits_t ledBitVals;
+19:                  
+20:                  // Create macros for each reading and writing
+21:                  
+22:                  #define INITIAL_DELAY (2000)
+23:                  #define DELAY_DELTA (50)
+24:                  #define DELAY_MAX (5*INITIAL_DELAY)
+25:                  
+26:                  #define INCREASE (0)
+27:                  #define DECREASE (!INCREASE)
+28:                  
+29:                  typedef enum LEDUpdateState
+30:                  {
+31:                      normal,
+32:                      alwaysOff,
+33:                      alwaysOn,
+34:                  } LEDUpdateState_t;
+35:                  
+36:                  int currentDelay = INITIAL_DELAY;
+37:                  
+38:                  #define INT_SKIP_DELAY 0x0020
+39:                  int skipDelay = INT_SKIP_DELAY;
+40:                  int delayCount = 0; // used by ISR to precisely time delays
+41:                  int loopCount = 0;
+42:                  int done = 0;  // Set to 0 if both switches are held down.
+43:                  
+44:                  
+45:                  void adjustDelay(int direction)
+46:                  {
+9D000000  27BDFFF8   ADDIU SP, SP, -8
+9D000004  AFBE0004   SW S8, 4(SP)
+9D000008  03A0F021   ADDU S8, SP, ZERO
+9D00000C  AFC40008   SW A0, 8(S8)
+47:                      switch (direction)
+9D000010  8FC20008   LW V0, 8(S8)
+9D000014  10400006   BEQ V0, ZERO, 0x9D000030
+9D000018  00000000   NOP
+9D00001C  24030001   ADDIU V1, ZERO, 1
+9D000020  10430010   BEQ V0, V1, 0x9D000064
+9D000024  00000000   NOP
+9D000028  0B400022   J 0x9D000088
+9D00002C  00000000   NOP
+48:                      {
+49:                          case INCREASE:
+50:                             currentDelay += DELAY_DELTA;
+9D000030  8F828010   LW V0, -32752(GP)
+9D000034  24420032   ADDIU V0, V0, 50
+9D000038  AF828010   SW V0, -32752(GP)
+51:                             if (currentDelay > DELAY_MAX)
+9D00003C  8F828010   LW V0, -32752(GP)
+9D000040  28422711   SLTI V0, V0, 10001
+9D000044  14400005   BNE V0, ZERO, 0x9D00005C
+9D000048  00000000   NOP
+52:                                 currentDelay = DELAY_MAX;
+9D00004C  24022710   ADDIU V0, ZERO, 10000
+9D000050  AF828010   SW V0, -32752(GP)
+53:                             break;
+9D000054  0B400022   J 0x9D000088
+9D000058  00000000   NOP
+9D00005C  0B400022   J 0x9D000088
+9D000060  00000000   NOP
+54:                              
+55:                          case DECREASE:
+56:                             currentDelay -= DELAY_DELTA/2;
+9D000064  8F828010   LW V0, -32752(GP)
+9D000068  2442FFE7   ADDIU V0, V0, -25
+9D00006C  AF828010   SW V0, -32752(GP)
+57:                             if (currentDelay < DELAY_DELTA)
+9D000070  8F828010   LW V0, -32752(GP)
+9D000074  28420032   SLTI V0, V0, 50
+9D000078  10400002   BEQ V0, ZERO, 0x9D000084
+9D00007C  00000000   NOP
+58:                                 currentDelay = 0;    // Should result in all on.
+9D000080  AF808010   SW ZERO, -32752(GP)
+59:                             break;
+9D000084  00000000   NOP
+60:                      }
+61:                  }
+9D000088  03C0E821   ADDU SP, S8, ZERO
+9D00008C  8FBE0004   LW S8, 4(SP)
+9D000090  27BD0008   ADDIU SP, SP, 8
+9D000094  03E00008   JR RA
+9D000098  00000000   NOP
+62:                  
+63:                  
+64:                  void delay ( int delVal)
+65:                  {
+9D00009C  27BDFFF0   ADDIU SP, SP, -16
+9D0000A0  AFBE000C   SW S8, 12(SP)
+9D0000A4  03A0F021   ADDU S8, SP, ZERO
+9D0000A8  AFC40010   SW A0, 16(S8)
+66:                      int i;
+67:                      int buttonPressed = 0;
+9D0000AC  AFC00004   SW ZERO, 4(S8)
+68:                      
+69:                      delVal = (delVal == 0)? 2*DELAY_DELTA : delVal;
+9D0000B0  8FC20010   LW V0, 16(S8)
+9D0000B4  10400004   BEQ V0, ZERO, 0x9D0000C8
+9D0000B8  00000000   NOP
+9D0000BC  8FC20010   LW V0, 16(S8)
+9D0000C0  0B400033   J 0x9D0000CC
+9D0000C4  00000000   NOP
+9D0000C8  24020064   ADDIU V0, ZERO, 100
+9D0000CC  AFC20010   SW V0, 16(S8)
+70:                      
+71:                      for (i=0; i<delVal; i++)
+9D0000D0  AFC00000   SW ZERO, 0(S8)
+9D0000D4  0B40003A   J 0x9D0000E8
+9D0000D8  00000000   NOP
+9D0000DC  8FC20000   LW V0, 0(S8)
+9D0000E0  24420001   ADDIU V0, V0, 1
+9D0000E4  AFC20000   SW V0, 0(S8)
+9D0000E8  8FC30000   LW V1, 0(S8)
+9D0000EC  8FC20010   LW V0, 16(S8)
+9D0000F0  0062102A   SLT V0, V1, V0
+9D0000F4  1440FFF9   BNE V0, ZERO, 0x9D0000DC
+9D0000F8  00000000   NOP
+72:                      {
+73:                          
+74:                      }
+75:                  }
+9D0000FC  03C0E821   ADDU SP, S8, ZERO
+9D000100  8FBE000C   LW S8, 12(SP)
+9D000104  27BD0010   ADDIU SP, SP, 16
+9D000108  03E00008   JR RA
+9D00010C  00000000   NOP
+76:                  
+77:                  void setupTimer(void)
+78:                  {
+9D000110  27BDFFF0   ADDIU SP, SP, -16
+9D000114  AFBE000C   SW S8, 12(SP)
+9D000118  03A0F021   ADDU S8, SP, ZERO
+79:                      __T1CONbits_t timer1Bits;
+80:                      
+81:                      timer1Bits.w = 0;
+9D00011C  AFC00000   SW ZERO, 0(S8)
+82:                      
+83:                      timer1Bits.TCS = 0;
+9D000120  97C20000   LHU V0, 0(S8)
+9D000124  7C020844   INS V0, ZERO, 1, 1
+9D000128  A7C20000   SH V0, 0(S8)
+84:                      timer1Bits.TCKPS = 0x02; // prescale 64
+9D00012C  97C20000   LHU V0, 0(S8)
+9D000130  24030002   ADDIU V1, ZERO, 2
+9D000134  7C622904   INS V0, V1, 4, 2
+9D000138  A7C20000   SH V0, 0(S8)
+85:                      timer1Bits.ON = 0x01; 
+9D00013C  97C20000   LHU V0, 0(S8)
+9D000140  24030001   ADDIU V1, ZERO, 1
+9D000144  7C627BC4   INS V0, V1, 15, 1
+9D000148  A7C20000   SH V0, 0(S8)
+86:                      
+87:                      PR1 = 0xFFFF;
+9D00014C  3C02BF80   LUI V0, -16512
+9D000150  3403FFFF   ORI V1, ZERO, -1
+9D000154  AC430620   SW V1, 1568(V0)
+88:                      T1CON = timer1Bits.w;
+9D000158  8FC30000   LW V1, 0(S8)
+9D00015C  3C02BF80   LUI V0, -16512
+9D000160  AC430600   SW V1, 1536(V0)
+89:                  }
+9D000164  03C0E821   ADDU SP, S8, ZERO
+9D000168  8FBE000C   LW S8, 12(SP)
+9D00016C  27BD0010   ADDIU SP, SP, 16
+9D000170  03E00008   JR RA
+9D000174  00000000   NOP
+90:                  
+91:                  void setupPorts(void)
+92:                  {
+9D000178  27BDFFF8   ADDIU SP, SP, -8
+9D00017C  AFBE0004   SW S8, 4(SP)
+9D000180  03A0F021   ADDU S8, SP, ZERO
+93:                      ledTrisBits.TRISB10 = 1;
+9D000184  97828044   LHU V0, -32700(GP)
+9D000188  24030001   ADDIU V1, ZERO, 1
+9D00018C  7C625284   INS V0, V1, 10, 1
+9D000190  A7828044   SH V0, -32700(GP)
+94:                      ledTrisBits.TRISB11 = 1;
+9D000194  97828044   LHU V0, -32700(GP)
+9D000198  24030001   ADDIU V1, ZERO, 1
+9D00019C  7C625AC4   INS V0, V1, 11, 1
+9D0001A0  A7828044   SH V0, -32700(GP)
+95:                      ledTrisBits.TRISB12 = 1;
+9D0001A4  97828044   LHU V0, -32700(GP)
+9D0001A8  24030001   ADDIU V1, ZERO, 1
+9D0001AC  7C626304   INS V0, V1, 12, 1
+9D0001B0  A7828044   SH V0, -32700(GP)
+96:                      ledTrisBits.TRISB13 = 1;
+9D0001B4  97828044   LHU V0, -32700(GP)
+9D0001B8  24030001   ADDIU V1, ZERO, 1
+9D0001BC  7C626B44   INS V0, V1, 13, 1
+9D0001C0  A7828044   SH V0, -32700(GP)
+97:                  
+98:                      // Configure Port B pins for output, other bits initialize to input (1)
+99:                      TRISBCLR = ledTrisBits.w;
+9D0001C4  8F838044   LW V1, -32700(GP)
+9D0001C8  3C02BF88   LUI V0, -16504
+9D0001CC  AC436044   SW V1, 24644(V0)
+100:                 
+101:                     // Set the corresponding bits.
+102:                     ledBitVals.RB10 = 1;
+9D0001D0  97828040   LHU V0, -32704(GP)
+9D0001D4  24030001   ADDIU V1, ZERO, 1
+9D0001D8  7C625284   INS V0, V1, 10, 1
+9D0001DC  A7828040   SH V0, -32704(GP)
+103:                     ledBitVals.RB11 = 1;
+9D0001E0  97828040   LHU V0, -32704(GP)
+9D0001E4  24030001   ADDIU V1, ZERO, 1
+9D0001E8  7C625AC4   INS V0, V1, 11, 1
+9D0001EC  A7828040   SH V0, -32704(GP)
+104:                     ledBitVals.RB12 = 1;
+9D0001F0  97828040   LHU V0, -32704(GP)
+9D0001F4  24030001   ADDIU V1, ZERO, 1
+9D0001F8  7C626304   INS V0, V1, 12, 1
+9D0001FC  A7828040   SH V0, -32704(GP)
+105:                     ledBitVals.RB13 = 1;
+9D000200  97828040   LHU V0, -32704(GP)
+9D000204  24030001   ADDIU V1, ZERO, 1
+9D000208  7C626B44   INS V0, V1, 13, 1
+9D00020C  A7828040   SH V0, -32704(GP)
+106:                 
+107:                     // Start out with everything lit
+108:                     PORTBSET = ledBitVals.w;
+9D000210  8F838040   LW V1, -32704(GP)
+9D000214  3C02BF88   LUI V0, -16504
+9D000218  AC436058   SW V1, 24664(V0)
+109:                 }
+9D00021C  03C0E821   ADDU SP, S8, ZERO
+9D000220  8FBE0004   LW S8, 4(SP)
+9D000224  27BD0008   ADDIU SP, SP, 8
+9D000228  03E00008   JR RA
+9D00022C  00000000   NOP
+110:                 
+111:                 void updateLED(LEDUpdateState_t ledState, int whichLED )
+112:                 {
+9D000230  27BDFFE8   ADDIU SP, SP, -24
+9D000234  AFBF0014   SW RA, 20(SP)
+9D000238  AFBE0010   SW S8, 16(SP)
+9D00023C  03A0F021   ADDU S8, SP, ZERO
+9D000240  AFC40018   SW A0, 24(S8)
+9D000244  AFC5001C   SW A1, 28(S8)
+113:                     switch (ledState)
+9D000248  8FC20018   LW V0, 24(S8)
+9D00024C  24030001   ADDIU V1, ZERO, 1
+9D000250  10430006   BEQ V0, V1, 0x9D00026C
+9D000254  00000000   NOP
+9D000258  24030002   ADDIU V1, ZERO, 2
+9D00025C  10430008   BEQ V0, V1, 0x9D000280
+9D000260  00000000   NOP
+9D000264  0B4000A5   J 0x9D000294
+9D000268  00000000   NOP
+114:                     {
+115:                         case alwaysOff:
+116:                             PORTBCLR = whichLED;
+9D00026C  8FC3001C   LW V1, 28(S8)
+9D000270  3C02BF88   LUI V0, -16504
+9D000274  AC436054   SW V1, 24660(V0)
+117:                             break;
+9D000278  0B4000A9   J 0x9D0002A4
+9D00027C  00000000   NOP
+118:                             
+119:                         case alwaysOn:
+120:                             PORTBSET = whichLED;
+9D000280  8FC3001C   LW V1, 28(S8)
+9D000284  3C02BF88   LUI V0, -16504
+9D000288  AC436058   SW V1, 24664(V0)
+121:                             break;
+9D00028C  0B4000A9   J 0x9D0002A4
+9D000290  00000000   NOP
+122:                             
+123:                         case normal:
+124:                         default:
+125:                             PORTBINV = whichLED;
+9D000294  8FC3001C   LW V1, 28(S8)
+9D000298  3C02BF88   LUI V0, -16504
+9D00029C  AC43605C   SW V1, 24668(V0)
+126:                             break;
+9D0002A0  00000000   NOP
+127:                     } 
+128:                     
+129:                     // Do the commanded current delay
+130:                     delay(currentDelay);
+9D0002A4  8F828010   LW V0, -32752(GP)
+9D0002A8  00402021   ADDU A0, V0, ZERO
+9D0002AC  0F400027   JAL delay
+9D0002B0  00000000   NOP
+131:                 }
+9D0002B4  03C0E821   ADDU SP, S8, ZERO
+9D0002B8  8FBF0014   LW RA, 20(SP)
+9D0002BC  8FBE0010   LW S8, 16(SP)
+9D0002C0  27BD0018   ADDIU SP, SP, 24
+9D0002C4  03E00008   JR RA
+9D0002C8  00000000   NOP
+132:                 
+133:                 // Originally I wanted to use one of the CEREBOT's pins, but they are not 
+134:                 // wired to a CN pin. At least it did not look like it when I checked.
+135:                 void setUpInterrupts( void)
+136:                 {
+9D0002CC  27BDFFF8   ADDIU SP, SP, -8
+9D0002D0  AFBE0004   SW S8, 4(SP)
+9D0002D4  03A0F021   ADDU S8, SP, ZERO
+137:                    asm volatile("DI");
+9D0002D8  41606000   DI ZERO
+138:                   
+139:                     // Will use Timer 2 here
+140:                     T2CON = 0x0010;         // Pre-scale 
+9D0002DC  3C02BF80   LUI V0, -16512
+9D0002E0  24030010   ADDIU V1, ZERO, 16
+9D0002E4  AC430800   SW V1, 2048(V0)
+141:                     TMR2 = 0x0;             // Initial Value
+9D0002E8  3C02BF80   LUI V0, -16512
+9D0002EC  AC400810   SW ZERO, 2064(V0)
+142:                     PR2 = 0x0FFF;           // Trigger Value
+9D0002F0  3C02BF80   LUI V0, -16512
+9D0002F4  24030FFF   ADDIU V1, ZERO, 4095
+9D0002F8  AC430820   SW V1, 2080(V0)
+143:                     IPC2SET = 0x00000011;   // Priority 4, Sub 1
+9D0002FC  3C02BF88   LUI V0, -16504
+9D000300  24030011   ADDIU V1, ZERO, 17
+9D000304  AC4310B8   SW V1, 4280(V0)
+144:                     
+145:                     IFS0CLR = 0x00000100;   // Clear Timer Int Flag 
+9D000308  3C02BF88   LUI V0, -16504
+9D00030C  24030100   ADDIU V1, ZERO, 256
+9D000310  AC431034   SW V1, 4148(V0)
+146:                     IEC0SET = 0x00000100;   // Enable Interrupts for Timer
+9D000314  3C02BF88   LUI V0, -16504
+9D000318  24030100   ADDIU V1, ZERO, 256
+9D00031C  AC431068   SW V1, 4200(V0)
+147:                     
+148:                     T2CONSET = 0x8000;      // Start the Timer.
+9D000320  3C02BF80   LUI V0, -16512
+9D000324  34038000   ORI V1, ZERO, -32768
+9D000328  AC430808   SW V1, 2056(V0)
+149:                     
+150:                     asm volatile("EI");
+9D00032C  41606020   EI ZERO
+151:                 }
+9D000330  03C0E821   ADDU SP, S8, ZERO
+9D000334  8FBE0004   LW S8, 4(SP)
+9D000338  03E00008   JR RA
+9D00033C  27BD0008   ADDIU SP, SP, 8
+152:                 
+153:                 int isrCount = 0;
+154:                 
+155:                 // Interrupt stuff in single vector mode.
+156:                 void isrHandler(void)
+157:                 {
+9D000340  415DE800   RDPGPR SP, SP
+9D000344  401B7000   MFC0 K1, EPC
+9D000348  401A6002   MFC0 K0, SRSCtl
+9D00034C  27BDFF88   ADDIU SP, SP, -120
+9D000350  AFBB0074   SW K1, 116(SP)
+9D000354  401B6000   MFC0 K1, Status
+9D000358  AFBA0070   SW K0, 112(SP)
+9D00035C  401A6800   MFC0 K0, Cause
+9D000360  AFBB006C   SW K1, 108(SP)
+9D000364  001AD282   SRL K0, K0, 10
+9D000368  7F5B7A84   INS K1, K0, 10, 6
+9D00036C  7C1B2044   INS K1, ZERO, 1, 4
+9D000370  409B6000   MTC0 K1, Status
+9D000374  AFA3001C   SW V1, 28(SP)
+9D000378  AFA20018   SW V0, 24(SP)
+9D00037C  8FA30070   LW V1, 112(SP)
+9D000380  3063000F   ANDI V1, V1, 15
+9D000384  14600012   BNE V1, ZERO, 0x9D0003D0
+9D000388  00000000   NOP
+9D00038C  AFBF005C   SW RA, 92(SP)
+9D000390  AFBE0058   SW S8, 88(SP)
+9D000394  AFB90054   SW T9, 84(SP)
+9D000398  AFB80050   SW T8, 80(SP)
+9D00039C  AFAF004C   SW T7, 76(SP)
+9D0003A0  AFAE0048   SW T6, 72(SP)
+9D0003A4  AFAD0044   SW T5, 68(SP)
+9D0003A8  AFAC0040   SW T4, 64(SP)
+9D0003AC  AFAB003C   SW T3, 60(SP)
+9D0003B0  AFAA0038   SW T2, 56(SP)
+9D0003B4  AFA90034   SW T1, 52(SP)
+9D0003B8  AFA80030   SW T0, 48(SP)
+9D0003BC  AFA7002C   SW A3, 44(SP)
+9D0003C0  AFA60028   SW A2, 40(SP)
+9D0003C4  AFA50024   SW A1, 36(SP)
+9D0003C8  AFA40020   SW A0, 32(SP)
+9D0003CC  AFA10014   SW AT, 20(SP)
+9D0003D0  00000000   NOP
+9D0003D4  00001012   MFLO V0
+9D0003D8  AFA20064   SW V0, 100(SP)
+9D0003DC  00001810   MFHI V1
+9D0003E0  AFA30060   SW V1, 96(SP)
+9D0003E4  03A0F021   ADDU S8, SP, ZERO
+158:                     int temp;
+159:                     goto here;
+9D0003E8  00000000   NOP
+160:                             
+161:                     LGS_LOG_EVENT_WITH_TIMESTAMP(loopCount++);
+162:                     if (loopCount == 3000)
+163:                     {
+164:                         LGS_LOG_EVENT(0xDEAD);
+165:                         LGS_LOG_EVENT(0xBEEF);
+166:                     }
+167:                     // Swith the LED state if it is time
+168:                     if (skipDelay % INT_SKIP_DELAY == 0 && 0) // do not do the LED here 
+169:                     {
+170:                         PORTBINV = LED1;        
+171:                     }
+172:                     skipDelay++;
+173:                 
+174:                     here:  
+175:                     // Check for the button
+176:                     if ( BTN1 == 1)
+9D0003EC  3C02BF88   LUI V0, -16504
+9D0003F0  8C426010   LW V0, 24592(V0)
+9D0003F4  30420040   ANDI V0, V0, 64
+9D0003F8  10400004   BEQ V0, ZERO, 0x9D00040C
+9D0003FC  00000000   NOP
+177:                     {    
+178:                         adjustDelay(DECREASE);
+9D000400  24040001   ADDIU A0, ZERO, 1
+9D000404  0F400000   JAL adjustDelay
+9D000408  00000000   NOP
+179:                     }
+180:                 
+181:                     if ( BTN2 == 1)
+9D00040C  3C02BF88   LUI V0, -16504
+9D000410  8C426010   LW V0, 24592(V0)
+9D000414  30420080   ANDI V0, V0, 128
+9D000418  10400004   BEQ V0, ZERO, 0x9D00042C
+9D00041C  00000000   NOP
+182:                     {
+183:                         adjustDelay(INCREASE);
+9D000420  00002021   ADDU A0, ZERO, ZERO
+9D000424  0F400000   JAL adjustDelay
+9D000428  00000000   NOP
+184:                     } 
+185:                 
+186:                     if (BTN1 && BTN2)
+9D00042C  3C02BF88   LUI V0, -16504
+9D000430  8C426010   LW V0, 24592(V0)
+9D000434  30420040   ANDI V0, V0, 64
+9D000438  1040000B   BEQ V0, ZERO, 0x9D000468
+9D00043C  00000000   NOP
+9D000440  3C02BF88   LUI V0, -16504
+9D000444  8C426010   LW V0, 24592(V0)
+9D000448  30420080   ANDI V0, V0, 128
+9D00044C  10400006   BEQ V0, ZERO, 0x9D000468
+9D000450  00000000   NOP
+187:                     {
+188:                         IEC0CLR = 0x00000100;   // Disable Interrupts from Timer
+9D000454  3C02BF88   LUI V0, -16504
+9D000458  24030100   ADDIU V1, ZERO, 256
+9D00045C  AC431064   SW V1, 4196(V0)
+189:                         done = 1;
+9D000460  24020001   ADDIU V0, ZERO, 1
+9D000464  AF828024   SW V0, -32732(GP)
+190:                     }
+191:                 
+192:                     isrCount++;
+9D000468  8F828028   LW V0, -32728(GP)
+9D00046C  24420001   ADDIU V0, V0, 1
+9D000470  AF828028   SW V0, -32728(GP)
+193:                             
+194:                     IFS0CLR = 0x00000100;   // Clear timer Int Flag
+9D000474  3C02BF88   LUI V0, -16504
+9D000478  24030100   ADDIU V1, ZERO, 256
+9D00047C  AC431034   SW V1, 4148(V0)
+195:                 }
+9D000480  03C0E821   ADDU SP, S8, ZERO
+9D000484  8FA20064   LW V0, 100(SP)
+9D000488  00400013   MTLO V0
+9D00048C  8FA30060   LW V1, 96(SP)
+9D000490  00600011   MTHI V1
+9D000494  8FA20070   LW V0, 112(SP)
+9D000498  3042000F   ANDI V0, V0, 15
+9D00049C  14400014   BNE V0, ZERO, 0x9D0004F0
+9D0004A0  00000000   NOP
+9D0004A4  8FBF005C   LW RA, 92(SP)
+9D0004A8  8FBE0058   LW S8, 88(SP)
+9D0004AC  8FB90054   LW T9, 84(SP)
+9D0004B0  8FB80050   LW T8, 80(SP)
+9D0004B4  8FAF004C   LW T7, 76(SP)
+9D0004B8  8FAE0048   LW T6, 72(SP)
+9D0004BC  8FAD0044   LW T5, 68(SP)
+9D0004C0  8FAC0040   LW T4, 64(SP)
+9D0004C4  8FAB003C   LW T3, 60(SP)
+9D0004C8  8FAA0038   LW T2, 56(SP)
+9D0004CC  8FA90034   LW T1, 52(SP)
+9D0004D0  8FA80030   LW T0, 48(SP)
+9D0004D4  8FA7002C   LW A3, 44(SP)
+9D0004D8  8FA60028   LW A2, 40(SP)
+9D0004DC  8FA50024   LW A1, 36(SP)
+9D0004E0  8FA40020   LW A0, 32(SP)
+9D0004E4  8FA3001C   LW V1, 28(SP)
+9D0004E8  8FA20018   LW V0, 24(SP)
+9D0004EC  8FA10014   LW AT, 20(SP)
+9D0004F0  00000000   NOP
+9D0004F4  41606000   DI ZERO
+9D0004F8  000000C0   EHB
+9D0004FC  8FBA0074   LW K0, 116(SP)
+9D000500  8FBB006C   LW K1, 108(SP)
+9D000504  409A7000   MTC0 K0, EPC
+9D000508  8FBA0070   LW K0, 112(SP)
+9D00050C  27BD0078   ADDIU SP, SP, 120
+9D000510  409A6002   MTC0 K0, SRSCtl
+9D000514  41DDE800   WRPGPR SP, SP
+9D000518  409B6000   MTC0 K1, Status
+9D00051C  42000018   ERET
+196:                 
+197:                 // This is documented in sys/attribs.h  basically store the above
+198:                 // fn in the vector table.
+199:                 void __ISR_SINGLE__ isrHandler(void);
+200:                 
+201:                 // Most of this is debug stuff
+202:                 int d0,d1,d2,d3,d4 = 0; 
+203:                 int brngValue = 0x12;
+204:                 
+205:                 int readI2CMemory ( )
+206:                 {
+9D000520  27BDFFF0   ADDIU SP, SP, -16
+9D000524  AFBE000C   SW S8, 12(SP)
+9D000528  03A0F021   ADDU S8, SP, ZERO
+207:                     // Set up the COn Register 7 bit address
+208:                     // Put first byte in transfer buffer (control word, for read )
+209:                     // TUrn on and start the module
+210:                     // Wait for ACK via the status module
+211:                     // Send MSB EEPROM Addr
+212:                     // Wait for ACK
+213:                     // Send LSB EEPROM Addr
+214:                     // Wait for ACK
+215:                     
+216:                     d0 = d1 = d2 = d3 = d4 = 0; // debug
+9D00052C  AF80802C   SW ZERO, -32724(GP)
+9D000530  8F82802C   LW V0, -32724(GP)
+9D000534  AF828048   SW V0, -32696(GP)
+9D000538  8F828048   LW V0, -32696(GP)
+9D00053C  AF828038   SW V0, -32712(GP)
+9D000540  8F828038   LW V0, -32712(GP)
+9D000544  AF828034   SW V0, -32716(GP)
+9D000548  8F828034   LW V0, -32716(GP)
+9D00054C  AF82803C   SW V0, -32708(GP)
+217:                 
+218:                     
+219:                     I2C1CONbits.A10M = 0; // 7 bit addressing
+9D000550  3C03BF80   LUI V1, -16512
+9D000554  94625000   LHU V0, 20480(V1)
+9D000558  7C025284   INS V0, ZERO, 10, 1
+9D00055C  A4625000   SH V0, 20480(V1)
+220:                     I2C1BRG = brngValue;     // Set up the baud register
+9D000560  8F828018   LW V0, -32744(GP)
+9D000564  00401821   ADDU V1, V0, ZERO
+9D000568  3C02BF80   LUI V0, -16512
+9D00056C  AC435040   SW V1, 20544(V0)
+221:                 
+222:                 
+223:                     // 7 bit Address of Device with write bit set
+224:                     I2C1TRN = 0x50;     // Address of EEPROM - Write    
+9D000570  3C02BF80   LUI V0, -16512
+9D000574  24030050   ADDIU V1, ZERO, 80
+9D000578  AC435050   SW V1, 20560(V0)
+225:                     I2C1CONSET = 0x1;   // Set the start bit
+9D00057C  3C02BF80   LUI V0, -16512
+9D000580  24030001   ADDIU V1, ZERO, 1
+9D000584  AC435008   SW V1, 20488(V0)
+226:                 
+227:                     while(I2C1STATbits.ACKSTAT == 1)
+9D000588  0B400167   J 0x9D00059C
+9D00058C  00000000   NOP
+9D00059C  3C02BF80   LUI V0, -16512
+9D0005A0  8C425010   LW V0, 20496(V0)
+9D0005A4  30428000   ANDI V0, V0, -32768
+9D0005A8  1440FFF9   BNE V0, ZERO, 0x9D000590
+9D0005AC  00000000   NOP
+228:                         d0++;   // Wait for the ack
+9D000590  8F82803C   LW V0, -32708(GP)
+9D000594  24420001   ADDIU V0, V0, 1
+9D000598  AF82803C   SW V0, -32708(GP)
+229:                     
+230:                     // MSB of Address to read from
+231:                     I2C1TRN = 0x00;    // MSB of 0x0000
+9D0005B0  3C02BF80   LUI V0, -16512
+9D0005B4  AC405050   SW ZERO, 20560(V0)
+232:                     while(I2C1STATbits.ACKSTAT == 1)
+9D0005B8  0B400173   J 0x9D0005CC
+9D0005BC  00000000   NOP
+9D0005CC  3C02BF80   LUI V0, -16512
+9D0005D0  8C425010   LW V0, 20496(V0)
+9D0005D4  30428000   ANDI V0, V0, -32768
+9D0005D8  1440FFF9   BNE V0, ZERO, 0x9D0005C0
+9D0005DC  00000000   NOP
+233:                         d1++;   // Wait for the ack
+9D0005C0  8F828034   LW V0, -32716(GP)
+9D0005C4  24420001   ADDIU V0, V0, 1
+9D0005C8  AF828034   SW V0, -32716(GP)
+234:                 
+235:                     // LSB of address to read from
+236:                     I2C1TRN = 0x00;    
+9D0005E0  3C02BF80   LUI V0, -16512
+9D0005E4  AC405050   SW ZERO, 20560(V0)
+237:                     while(I2C1STATbits.ACKSTAT == 1)
+9D0005E8  0B40017F   J 0x9D0005FC
+9D0005EC  00000000   NOP
+9D0005FC  3C02BF80   LUI V0, -16512
+9D000600  8C425010   LW V0, 20496(V0)
+9D000604  30428000   ANDI V0, V0, -32768
+9D000608  1440FFF9   BNE V0, ZERO, 0x9D0005F0
+9D00060C  00000000   NOP
+238:                         d2++;   // Wait for the ack
+9D0005F0  8F828038   LW V0, -32712(GP)
+9D0005F4  24420001   ADDIU V0, V0, 1
+9D0005F8  AF828038   SW V0, -32712(GP)
+239:                 
+240:                     I2C1TRN = 0x51; // Read from this address
+9D000610  3C02BF80   LUI V0, -16512
+9D000614  24030051   ADDIU V1, ZERO, 81
+9D000618  AC435050   SW V1, 20560(V0)
+241:                     
+242:                     // Restart Bit set
+243:                     I2C1CONSET = 0x02;
+9D00061C  3C02BF80   LUI V0, -16512
+9D000620  24030002   ADDIU V1, ZERO, 2
+9D000624  AC435008   SW V1, 20488(V0)
+244:                     
+245:                     while(I2C1STATbits.ACKSTAT == 1)
+9D000628  0B40018F   J 0x9D00063C
+9D00062C  00000000   NOP
+9D00063C  3C02BF80   LUI V0, -16512
+9D000640  8C425010   LW V0, 20496(V0)
+9D000644  30428000   ANDI V0, V0, -32768
+9D000648  1440FFF9   BNE V0, ZERO, 0x9D000630
+9D00064C  00000000   NOP
+246:                         d3++;   // Wait for the act
+9D000630  8F828048   LW V0, -32696(GP)
+9D000634  24420001   ADDIU V0, V0, 1
+9D000638  AF828048   SW V0, -32696(GP)
+247:                 
+248:                     // Set up Receive Enable and wait for RBF to clear
+249:                     I2C1CONSET = 0x08;
+9D000650  3C02BF80   LUI V0, -16512
+9D000654  24030008   ADDIU V1, ZERO, 8
+9D000658  AC435008   SW V1, 20488(V0)
+250:                     while (I2C1STATbits.RBF == 1)
+9D00065C  0B40019C   J 0x9D000670
+9D000660  00000000   NOP
+9D000670  3C02BF80   LUI V0, -16512
+9D000674  8C425010   LW V0, 20496(V0)
+9D000678  30420002   ANDI V0, V0, 2
+9D00067C  1440FFF9   BNE V0, ZERO, 0x9D000664
+9D000680  00000000   NOP
+251:                         d4++;
+9D000664  8F82802C   LW V0, -32724(GP)
+9D000668  24420001   ADDIU V0, V0, 1
+9D00066C  AF82802C   SW V0, -32724(GP)
+252:                     
+253:                     I2C1CONSET = 0x10;  // Generate the ACT
+9D000684  3C02BF80   LUI V0, -16512
+9D000688  24030010   ADDIU V1, ZERO, 16
+9D00068C  AC435008   SW V1, 20488(V0)
+254:                     
+255:                     int data = 0;
+9D000690  AFC00000   SW ZERO, 0(S8)
+256:                     // Get the byte
+257:                     data = I2C1RCV;
+9D000694  3C02BF80   LUI V0, -16512
+9D000698  8C425060   LW V0, 20576(V0)
+9D00069C  AFC20000   SW V0, 0(S8)
+258:                     
+259:                     I2C1CONSET = 0x04; // stop bit   
+9D0006A0  3C02BF80   LUI V0, -16512
+9D0006A4  24030004   ADDIU V1, ZERO, 4
+9D0006A8  AC435008   SW V1, 20488(V0)
+260:                     return data;
+9D0006AC  8FC20000   LW V0, 0(S8)
+261:                 }
+9D0006B0  03C0E821   ADDU SP, S8, ZERO
+9D0006B4  8FBE000C   LW S8, 12(SP)
+9D0006B8  27BD0010   ADDIU SP, SP, 16
+9D0006BC  03E00008   JR RA
+9D0006C0  00000000   NOP
+262:                 
+263:                 
+264:                 void writeI2CMemory ( int byteToWrite)
+265:                 {
+9D0006C4  27BDFFF8   ADDIU SP, SP, -8
+9D0006C8  AFBE0004   SW S8, 4(SP)
+9D0006CC  03A0F021   ADDU S8, SP, ZERO
+9D0006D0  AFC40008   SW A0, 8(S8)
+266:                     // Set up the CON Register 7 bit address
+267:                     // Put first byte in transfer buffer (control word, for read )
+268:                     // TUrn on and start the module
+269:                     // Wait for ACK via the status module
+270:                     // Send MSB EEPROM Addr
+271:                     // Wait for ACK
+272:                     // Send LSB EEPROM Addr
+273:                     // Wait for ACK
+274:                     
+275:                     d0 = d1 = d2 = d3 = 0; // debug
+9D0006D4  AF808048   SW ZERO, -32696(GP)
+9D0006D8  8F828048   LW V0, -32696(GP)
+9D0006DC  AF828038   SW V0, -32712(GP)
+9D0006E0  8F828038   LW V0, -32712(GP)
+9D0006E4  AF828034   SW V0, -32716(GP)
+9D0006E8  8F828034   LW V0, -32716(GP)
+9D0006EC  AF82803C   SW V0, -32708(GP)
+276:                 
+277:                        
+278:                 
+279:                     I2C1CONbits.SEN = 0x1;   // Set the start bit
+9D0006F0  3C03BF80   LUI V1, -16512
+9D0006F4  94625000   LHU V0, 20480(V1)
+9D0006F8  24040001   ADDIU A0, ZERO, 1
+9D0006FC  7C820004   INS V0, A0, 0, 1
+9D000700  A4625000   SH V0, 20480(V1)
+280:                     I2C1BRG = brngValue;     // Set up the baud register
+9D000704  8F828018   LW V0, -32744(GP)
+9D000708  00401821   ADDU V1, V0, ZERO
+9D00070C  3C02BF80   LUI V0, -16512
+9D000710  AC435040   SW V1, 20544(V0)
+281:                     // 7 bit Address of Device with write bit set
+282:                     I2C1TRN = 0x50;     // Address of EEPROM - Write    
+9D000714  3C02BF80   LUI V0, -16512
+9D000718  24030050   ADDIU V1, ZERO, 80
+9D00071C  AC435050   SW V1, 20560(V0)
+283:                 
+284:                 
+285:                     while(I2C1STATbits.ACKSTAT == 1)
+9D000720  0B4001CD   J 0x9D000734
+9D000724  00000000   NOP
+9D000734  3C02BF80   LUI V0, -16512
+9D000738  8C425010   LW V0, 20496(V0)
+9D00073C  30428000   ANDI V0, V0, -32768
+9D000740  1440FFF9   BNE V0, ZERO, 0x9D000728
+9D000744  00000000   NOP
+286:                         d0++;   // Wait for the ack
+9D000728  8F82803C   LW V0, -32708(GP)
+9D00072C  24420001   ADDIU V0, V0, 1
+9D000730  AF82803C   SW V0, -32708(GP)
+287:                     
+288:                     // MSB of Address to write to
+289:                     I2C1TRN = 0x00;    
+9D000748  3C02BF80   LUI V0, -16512
+9D00074C  AC405050   SW ZERO, 20560(V0)
+290:                     I2C1BRG = brngValue;     // Set up the baud register
+9D000750  8F828018   LW V0, -32744(GP)
+9D000754  00401821   ADDU V1, V0, ZERO
+9D000758  3C02BF80   LUI V0, -16512
+9D00075C  AC435040   SW V1, 20544(V0)
+291:                     while(I2C1STATbits.ACKSTAT == 1)
+9D000760  0B4001DD   J 0x9D000774
+9D000764  00000000   NOP
+9D000774  3C02BF80   LUI V0, -16512
+9D000778  8C425010   LW V0, 20496(V0)
+9D00077C  30428000   ANDI V0, V0, -32768
+9D000780  1440FFF9   BNE V0, ZERO, 0x9D000768
+9D000784  00000000   NOP
+292:                         d1++;   // Wait for the ack
+9D000768  8F828034   LW V0, -32716(GP)
+9D00076C  24420001   ADDIU V0, V0, 1
+9D000770  AF828034   SW V0, -32716(GP)
+293:                 
+294:                     // LSB of address to write to
+295:                     I2C1TRN = 0x00;    
+9D000788  3C02BF80   LUI V0, -16512
+9D00078C  AC405050   SW ZERO, 20560(V0)
+296:                     while(I2C1STATbits.ACKSTAT == 1)
+9D000790  0B4001E9   J 0x9D0007A4
+9D000794  00000000   NOP
+9D0007A4  3C02BF80   LUI V0, -16512
+9D0007A8  8C425010   LW V0, 20496(V0)
+9D0007AC  30428000   ANDI V0, V0, -32768
+9D0007B0  1440FFF9   BNE V0, ZERO, 0x9D000798
+9D0007B4  00000000   NOP
+297:                         d2++;   // Wait for the ack
+9D000798  8F828038   LW V0, -32712(GP)
+9D00079C  24420001   ADDIU V0, V0, 1
+9D0007A0  AF828038   SW V0, -32712(GP)
+298:                     
+299:                     // Restart Bit set
+300:                     I2C1CONbits.RSEN = 0x01;
+9D0007B8  3C03BF80   LUI V1, -16512
+9D0007BC  94625000   LHU V0, 20480(V1)
+9D0007C0  24040001   ADDIU A0, ZERO, 1
+9D0007C4  7C820844   INS V0, A0, 1, 1
+9D0007C8  A4625000   SH V0, 20480(V1)
+301:                     
+302:                     //  Byte to Write
+303:                     I2C1TRN = byteToWrite;    
+9D0007CC  8FC30008   LW V1, 8(S8)
+9D0007D0  3C02BF80   LUI V0, -16512
+9D0007D4  AC435050   SW V1, 20560(V0)
+304:                     while(I2C1STATbits.ACKSTAT == 1)
+9D0007D8  0B4001FB   J 0x9D0007EC
+9D0007DC  00000000   NOP
+9D0007EC  3C02BF80   LUI V0, -16512
+9D0007F0  8C425010   LW V0, 20496(V0)
+9D0007F4  30428000   ANDI V0, V0, -32768
+9D0007F8  1440FFF9   BNE V0, ZERO, 0x9D0007E0
+9D0007FC  00000000   NOP
+305:                        d3++ ;   // Wait for the ack
+9D0007E0  8F828048   LW V0, -32696(GP)
+9D0007E4  24420001   ADDIU V0, V0, 1
+9D0007E8  AF828048   SW V0, -32696(GP)
+306:                 
+307:                     I2C1CONSET = 0x04; // stop bit        
+9D000800  3C02BF80   LUI V0, -16512
+9D000804  24030004   ADDIU V1, ZERO, 4
+9D000808  AC435008   SW V1, 20488(V0)
+308:                 }
+9D00080C  03C0E821   ADDU SP, S8, ZERO
+9D000810  8FBE0004   LW S8, 4(SP)
+9D000814  27BD0008   ADDIU SP, SP, 8
+9D000818  03E00008   JR RA
+9D00081C  00000000   NOP
+309:                 
+310:                 
+311:                 
+312:                 /*
+313:                  * 
+314:                  */
+315:                 int main(int argc, char** argv) 
+316:                 {    
+9D000820  27BDFFE0   ADDIU SP, SP, -32
+9D000824  AFBF001C   SW RA, 28(SP)
+9D000828  AFBE0018   SW S8, 24(SP)
+9D00082C  03A0F021   ADDU S8, SP, ZERO
+9D000830  AFC40020   SW A0, 32(S8)
+317:                     int i;
+318:                     setupTimer();
+9D000834  0F400044   JAL setupTimer
+9D000838  AFC50024   SW A1, 36(S8)
+319:                     setupPorts();
+9D00083C  0F40005E   JAL setupPorts
+9D000840  00000000   NOP
+320:                     setUpInterrupts();
+9D000844  0F4000B3   JAL setUpInterrupts
+9D000848  00000000   NOP
+321:                         
+322:                     LEDUpdateState_t ledState = normal;
+9D00084C  AFC00010   SW ZERO, 16(S8)
+323:                         
+324:                     
+325:                     while (!done)
+9D000850  0B400234   J 0x9D0008D0
+9D000854  00000000   NOP
+9D0008D0  8F828024   LW V0, -32732(GP)
+9D0008D4  1040FFE0   BEQ V0, ZERO, 0x9D000858
+9D0008D8  00000000   NOP
+326:                     {   
+327:                 //        LGS_LOG_EVENT_WITH_TIMESTAMP(0xDEAD);
+328:                 //        LGS_LOG_EVENT(loopCount);
+329:                 //        LGS_LOG_EVENT(currentDelay);
+330:                         
+331:                         updateLED(ledState, LED1);
+9D000858  8FC40010   LW A0, 16(S8)
+9D00085C  0F40008C   JAL updateLED
+9D000860  24050400   ADDIU A1, ZERO, 1024
+332:                         
+333:                         updateLED(ledState, LED2);
+9D000864  8FC40010   LW A0, 16(S8)
+9D000868  0F40008C   JAL updateLED
+9D00086C  24050800   ADDIU A1, ZERO, 2048
+334:                         
+335:                         updateLED(ledState, LED3);
+9D000870  8FC40010   LW A0, 16(S8)
+9D000874  0F40008C   JAL updateLED
+9D000878  24051000   ADDIU A1, ZERO, 4096
+336:                 
+337:                         updateLED(ledState, LED4);
+9D00087C  8FC40010   LW A0, 16(S8)
+9D000880  0F40008C   JAL updateLED
+9D000884  24052000   ADDIU A1, ZERO, 8192
+338:                         
+339:                         // Update the LED State
+340:                         if (currentDelay > 0 && currentDelay < DELAY_MAX)
+9D000888  8F828010   LW V0, -32752(GP)
+9D00088C  18400007   BLEZ V0, 0x9D0008AC
+9D000890  00000000   NOP
+9D000894  8F828010   LW V0, -32752(GP)
+9D000898  28422710   SLTI V0, V0, 10000
+9D00089C  10400003   BEQ V0, ZERO, 0x9D0008AC
+9D0008A0  00000000   NOP
+341:                             ledState = normal;
+9D0008A4  0B400234   J 0x9D0008D0
+9D0008A8  AFC00010   SW ZERO, 16(S8)
+342:                         else
+343:                             if (currentDelay == 0)
+9D0008AC  8F828010   LW V0, -32752(GP)
+9D0008B0  14400005   BNE V0, ZERO, 0x9D0008C8
+9D0008B4  00000000   NOP
+344:                                 ledState = alwaysOn;
+9D0008B8  24020002   ADDIU V0, ZERO, 2
+9D0008BC  AFC20010   SW V0, 16(S8)
+9D0008C0  0B400234   J 0x9D0008D0
+9D0008C4  00000000   NOP
+345:                             else
+346:                                 ledState = alwaysOff;
+9D0008C8  24020001   ADDIU V0, ZERO, 1
+9D0008CC  AFC20010   SW V0, 16(S8)
+347:                         
+348:                 //        LGS_LOG_EVENT_WITH_TIMESTAMP(0xBEEF);
+349:                         
+350:                 //        if (++loopCount == 100)
+351:                 //        {
+352:                 //            LGS_LOG_EVENT_WITH_TIMESTAMP(0x3333);
+353:                 //        }
+354:                         
+355:                     }
+356:                     
+357:                     updateLED(alwaysOff, LED1);
+9D0008DC  24040001   ADDIU A0, ZERO, 1
+9D0008E0  0F40008C   JAL updateLED
+9D0008E4  24050400   ADDIU A1, ZERO, 1024
+358:                     updateLED(alwaysOff, LED2);
+9D0008E8  24040001   ADDIU A0, ZERO, 1
+9D0008EC  0F40008C   JAL updateLED
+9D0008F0  24050800   ADDIU A1, ZERO, 2048
+359:                     updateLED(alwaysOff, LED3);
+9D0008F4  24040001   ADDIU A0, ZERO, 1
+9D0008F8  0F40008C   JAL updateLED
+9D0008FC  24051000   ADDIU A1, ZERO, 4096
+360:                     updateLED(alwaysOff, LED4);
+9D000900  24040001   ADDIU A0, ZERO, 1
+9D000904  0F40008C   JAL updateLED
+9D000908  24052000   ADDIU A1, ZERO, 8192
+361:                     
+362:                     I2C1CONbits.ON = 1;
+9D00090C  3C03BF80   LUI V1, -16512
+9D000910  94625000   LHU V0, 20480(V1)
+9D000914  24040001   ADDIU A0, ZERO, 1
+9D000918  7C827BC4   INS V0, A0, 15, 1
+9D00091C  A4625000   SH V0, 20480(V1)
+363:                     asm volatile("NOP");        
+9D000920  00000000   NOP
+364:                     I2C1CONbits.A10M = 0; // 7 bit addressing    
+9D000924  3C03BF80   LUI V1, -16512
+9D000928  94625000   LHU V0, 20480(V1)
+9D00092C  7C025284   INS V0, ZERO, 10, 1
+9D000930  A4625000   SH V0, 20480(V1)
+365:                 
+366:                 
+367:                 
+368:                     writeI2CMemory(0x55);
+9D000934  0F4001B1   JAL writeI2CMemory
+9D000938  24040055   ADDIU A0, ZERO, 85
+369:                     i = readI2CMemory();
+9D00093C  0F400148   JAL readI2CMemory
+9D000940  00000000   NOP
+9D000944  AFC20014   SW V0, 20(S8)
+370:                 
+371:                     blink8Bits( i,1);
+9D000948  8FC40014   LW A0, 20(S8)
+9D00094C  0F400299   JAL blink8Bits
+9D000950  24050001   ADDIU A1, ZERO, 1
+372:                    
+373:                     return (EXIT_SUCCESS);
+9D000954  00001021   ADDU V0, ZERO, ZERO
+374:                 }
+9D000958  03C0E821   ADDU SP, S8, ZERO
+9D00095C  8FBF001C   LW RA, 28(SP)
+9D000960  8FBE0018   LW S8, 24(SP)
+9D000964  27BD0020   ADDIU SP, SP, 32
+9D000968  03E00008   JR RA
+9D00096C  00000000   NOP
+375:                 
+---  /Users/lees/MPLABXProjects/UpDown.X/i2c.c  ---------------------------------------------------------
+1:                   /* ************************************************************************** */
+2:                   /** Descriptive File Name
+3:                   
+4:                     @Company
+5:                       Company Name
+6:                   
+7:                     @File Name
+8:                       filename.c
+9:                   
+10:                    @Summary
+11:                      Brief description of the file.
+12:                  
+13:                    @Description
+14:                      Describe the purpose of this file.
+15:                   */
+16:                  /* ************************************************************************** */
+17:                  
+18:                  /* ************************************************************************** */
+19:                  /* ************************************************************************** */
+20:                  /* Section: Included Files                                                    */
+21:                  /* ************************************************************************** */
+22:                  /* ************************************************************************** */
+23:                  #include <proc/p32mx460f512l.h>
+24:                  
+25:                  /* This section lists the other files that are included in this file.
+26:                   */
+27:                  
+28:                  /* TODO:  Include other files here if needed. */
+29:                  
+30:                  
+31:                  /* ************************************************************************** */
+32:                  /* ************************************************************************** */
+33:                  /* Section: File Scope or Global Data                                         */
+34:                  /* ************************************************************************** */
+35:                  /* ************************************************************************** */
+36:                  
+37:                  /*  A brief description of a section can be given directly below the section
+38:                      banner.
+39:                   */
+40:                  
+41:                  /* ************************************************************************** */
+42:                  /** Descriptive Data Item Name
+43:                  
+44:                    @Summary
+45:                      Brief one-line summary of the data item.
+46:                      
+47:                    @Description
+48:                      Full description, explaining the purpose and usage of data item.
+49:                      <p>
+50:                      Additional description in consecutive paragraphs separated by HTML 
+51:                      paragraph breaks, as necessary.
+52:                      <p>
+53:                      Type "JavaDoc" in the "How Do I?" IDE toolbar for more information on tags.
+54:                      
+55:                    @Remarks
+56:                      Any additional remarks
+57:                   */
+58:                  
+59:                  
+60:                  /* ************************************************************************** */
+61:                  /* ************************************************************************** */
+62:                  // Section: Local Functions                                                   */
+63:                  /* ************************************************************************** */
+64:                  /* ************************************************************************** */
+65:                  
+66:                  /*  A brief description of a section can be given directly below the section
+67:                      banner.
+68:                   */
+69:                  
+70:                  /* ************************************************************************** */
+71:                  
+72:                  /** 
+73:                    @Function
+74:                      int ExampleLocalFunctionName ( int param1, int param2 ) 
+75:                  
+76:                    @Summary
+77:                      Brief one-line description of the function.
+78:                  
+79:                    @Description
+80:                      Full description, explaining the purpose and usage of the function.
+81:                      <p>
+82:                      Additional description in consecutive paragraphs separated by HTML 
+83:                      paragraph breaks, as necessary.
+84:                      <p>
+85:                      Type "JavaDoc" in the "How Do I?" IDE toolbar for more information on tags.
+86:                  
+87:                    @Precondition
+88:                      List and describe any required preconditions. If there are no preconditions,
+89:                      enter "None."
+90:                  
+91:                    @Parameters
+92:                      @param param1 Describe the first parameter to the function.
+93:                      
+94:                      @param param2 Describe the second parameter to the function.
+95:                  
+96:                    @Returns
+97:                      List (if feasible) and describe the return values of the function.
+98:                      <ul>
+99:                        <li>1   Indicates an error occurred
+100:                       <li>0   Indicates an error did not occur
+101:                     </ul>
+102:                 
+103:                   @Remarks
+104:                     Describe any special behavior not described above.
+105:                     <p>
+106:                     Any additional remarks.
+107:                 
+108:                   @Example
+109:                     @code
+110:                     if(ExampleFunctionName(1, 2) == 0)
+111:                     {
+112:                         return 3;
+113:                     }
+114:                  */
+115:                 static int ExampleLocalFunction(int param1, int param2) {
+9D000DD4  27BDFFF8   ADDIU SP, SP, -8
+9D000DD8  AFBE0004   SW S8, 4(SP)
+9D000DDC  03A0F021   ADDU S8, SP, ZERO
+9D000DE0  AFC40008   SW A0, 8(S8)
+9D000DE4  AFC5000C   SW A1, 12(S8)
+116:                     return 0;
+9D000DE8  00001021   ADDU V0, ZERO, ZERO
+117:                 }
+9D000DEC  03C0E821   ADDU SP, S8, ZERO
+9D000DF0  8FBE0004   LW S8, 4(SP)
+9D000DF4  27BD0008   ADDIU SP, SP, 8
+9D000DF8  03E00008   JR RA
+9D000DFC  00000000   NOP
+118:                 
+119:                 
+120:                 /* ************************************************************************** */
+121:                 /* ************************************************************************** */
+122:                 // Section: Interface Functions                                               */
+123:                 /* ************************************************************************** */
+124:                 /* ************************************************************************** */
+125:                 
+126:                 /*  A brief description of a section can be given directly below the section
+127:                     banner.
+128:                  */
+129:                 
+130:                 // *****************************************************************************
+131:                 
+132:                 /** 
+133:                   @Function
+134:                     int ExampleInterfaceFunctionName ( int param1, int param2 ) 
+135:                 
+136:                   @Summary
+137:                     Brief one-line description of the function.
+138:                 
+139:                   @Remarks
+140:                     Refer to the example_file.h interface header for function usage details.
+141:                  */
+142:                 int InitializeI2C(int portNum) 
+143:                 {
+9D000E00  27BDFFF0   ADDIU SP, SP, -16
+9D000E04  AFBE000C   SW S8, 12(SP)
+9D000E08  03A0F021   ADDU S8, SP, ZERO
+9D000E0C  AFC40010   SW A0, 16(S8)
+144:                     volatile unsigned int *i2cxCon;
+145:                     __I2C1CONbits_t i2cConBits;
+146:                     
+147:                     // Point to the correct port
+148:                     if (portNum == 1)
+9D000E10  8FC30010   LW V1, 16(S8)
+9D000E14  24020001   ADDIU V0, ZERO, 1
+9D000E18  14620006   BNE V1, V0, 0x9D000E34
+9D000E1C  00000000   NOP
+149:                         i2cxCon = &I2C1CON;
+9D000E20  3C02BF80   LUI V0, -16512
+9D000E24  24425000   ADDIU V0, V0, 20480
+9D000E28  AFC20000   SW V0, 0(S8)
+9D000E2C  0B400390   J 0x9D000E40
+9D000E30  00000000   NOP
+150:                     else
+151:                         i2cxCon = &I2C2CON;
+9D000E34  3C02BF80   LUI V0, -16512
+9D000E38  24425200   ADDIU V0, V0, 20992
+9D000E3C  AFC20000   SW V0, 0(S8)
+152:                     
+153:                     i2cConBits.w = 0x00009000; 
+9D000E40  34029000   ORI V0, ZERO, -28672
+9D000E44  AFC20004   SW V0, 4(S8)
+154:                     *i2cxCon = i2cConBits.w;
+9D000E48  8FC30004   LW V1, 4(S8)
+9D000E4C  8FC20000   LW V0, 0(S8)
+9D000E50  AC430000   SW V1, 0(V0)
+155:                     
+156:                     return 0;
+9D000E54  00001021   ADDU V0, ZERO, ZERO
+157:                 }
+9D000E58  03C0E821   ADDU SP, S8, ZERO
+9D000E5C  8FBE000C   LW S8, 12(SP)
+9D000E60  27BD0010   ADDIU SP, SP, 16
+9D000E64  03E00008   JR RA
+9D000E68  00000000   NOP
+158:                 
+159:                 int WriteI2C(unsigned char *data)
+160:                 {
+9D000E6C  27BDFFF8   ADDIU SP, SP, -8
+9D000E70  AFBE0004   SW S8, 4(SP)
+9D000E74  03A0F021   ADDU S8, SP, ZERO
+9D000E78  AFC40008   SW A0, 8(S8)
+161:                     return 0;
+9D000E7C  00001021   ADDU V0, ZERO, ZERO
+162:                 }
+9D000E80  03C0E821   ADDU SP, S8, ZERO
+9D000E84  8FBE0004   LW S8, 4(SP)
+9D000E88  27BD0008   ADDIU SP, SP, 8
+9D000E8C  03E00008   JR RA
+9D000E90  00000000   NOP
+163:                 
+164:                 /* *****************************************************************************
+165:                  End of File
+166:                  */
+---  /Users/lees/MPLABXProjects/UpDown.X/global.c  ------------------------------------------------------
+1:                   /*
+2:                    * global.c
+3:                    *
+4:                    *  Created on: Jan 31, 2017
+5:                    *      Author: lee.shipman
+6:                    */
+7:                   
+8:                   #include <proc/p32mx460f512l.h>
+9:                   #include "global.h"
+10:                  
+11:                  
+12:                  // Global Data
+13:                  uint32_t currentTime;
+14:                  
+15:                  
+16:                  // Global behavior
+17:                  
+18:                  // Time Stuff
+19:                  uint32_t getCurrentTime()
+20:                  {
+9D000F58  27BDFFF8   ADDIU SP, SP, -8
+9D000F5C  AFBE0004   SW S8, 4(SP)
+9D000F60  03A0F021   ADDU S8, SP, ZERO
+21:                  	return TMR1;
+9D000F64  3C02BF80   LUI V0, -16512
+9D000F68  8C420610   LW V0, 1552(V0)
+22:                  //    return currentTime;
+23:                  }
+9D000F6C  03C0E821   ADDU SP, S8, ZERO
+9D000F70  8FBE0004   LW S8, 4(SP)
+9D000F74  27BD0008   ADDIU SP, SP, 8
+9D000F78  03E00008   JR RA
+9D000F7C  00000000   NOP
+24:                  
+25:                  void incrementCurrentTime()
+26:                  {
+9D000F80  27BDFFF8   ADDIU SP, SP, -8
+9D000F84  AFBE0004   SW S8, 4(SP)
+9D000F88  03A0F021   ADDU S8, SP, ZERO
+27:                  	currentTime++;
+9D000F8C  8F82804C   LW V0, -32692(GP)
+9D000F90  24420001   ADDIU V0, V0, 1
+9D000F94  AF82804C   SW V0, -32692(GP)
+28:                  }
+9D000F98  03C0E821   ADDU SP, S8, ZERO
+9D000F9C  8FBE0004   LW S8, 4(SP)
+9D000FA0  27BD0008   ADDIU SP, SP, 8
+9D000FA4  03E00008   JR RA
+9D000FA8  00000000   NOP
+29:                  
+---  /Users/lees/MPLABXProjects/UpDown.X/LED_Display.c  -------------------------------------------------
+1:                   /* 
+2:                    * File:   LED_Display.c
+3:                    * Author: lees
+4:                    *
+5:                    * Created on May 15, 2017, 10:15 AM
+6:                    */
+7:                   
+8:                   // This file a couple of routines which allow one to blink out numbers
+9:                   // using the four LEDs on the CEREBOT board.  With not to much effort,
+10:                  // I think this can be ported to a different platform.
+11:                  
+12:                  #include <xc.h>
+13:                  #include "cerabot.h"
+14:                  
+15:                  
+16:                  // Byte - Nibble Display
+17:                  // MSB                LSB
+18:                  // LED4, LED3, LED2, LED1
+19:                  static unsigned short LEDMap[ 16] = //0-F
+20:                  {
+21:                      0,                                  //0
+22:                      LED1,                               //1
+23:                      LED2,                               //2
+24:                      (LED2) | (LED1),                    //3
+25:                      LED3,                               //4
+26:                      (LED3) | (LED1),                    //5
+27:                      (LED3) | (LED2),                    //6
+28:                      (LED3) | (LED2) | (LED1),           //7
+29:                      (LED4),                             //8
+30:                      (LED4) | (LED1),                    //9
+31:                      (LED4) | (LED2),                    //A
+32:                      (LED4) | (LED2) | (LED1),           //B
+33:                      (LED4) | (LED3),                    //C
+34:                      (LED4) | (LED3) | (LED1),           //D
+35:                      (LED4) | (LED3) | (LED2),           //E
+36:                      (LED4) | (LED3) | (LED2) | (LED1),  //F
+37:                  };
+38:                  
+39:                  /*
+40:                   * Function to delay x number of milliseconds.  Pass in the number of 
+41:                   * milliseconds to delay.
+42:                   * 
+43:                   * First implementation is pretty crude. May want to make more accurate
+44:                   * should the need ariase in the future.
+45:                   */
+46:                  void delayxMS( int msecToDelay)
+47:                  {
+9D000970  27BDFFF0   ADDIU SP, SP, -16
+9D000974  AFBE000C   SW S8, 12(SP)
+9D000978  03A0F021   ADDU S8, SP, ZERO
+9D00097C  AFC40010   SW A0, 16(S8)
+48:                      int i;
+49:                      
+50:                      for (i = 0; i < msecToDelay*20; i++)
+9D000980  AFC00000   SW ZERO, 0(S8)
+9D000984  0B400267   J 0x9D00099C
+9D000988  00000000   NOP
+9D000990  8FC20000   LW V0, 0(S8)
+9D000994  24420001   ADDIU V0, V0, 1
+9D000998  AFC20000   SW V0, 0(S8)
+9D00099C  8FC20010   LW V0, 16(S8)
+9D0009A0  00021080   SLL V0, V0, 2
+9D0009A4  00021880   SLL V1, V0, 2
+9D0009A8  00431821   ADDU V1, V0, V1
+9D0009AC  8FC20000   LW V0, 0(S8)
+9D0009B0  0043102A   SLT V0, V0, V1
+9D0009B4  1440FFF5   BNE V0, ZERO, 0x9D00098C
+9D0009B8  00000000   NOP
+51:                      {
+52:                          asm volatile("NOP");        
+9D00098C  00000000   NOP
+53:                      }
+54:                  }
+9D0009BC  03C0E821   ADDU SP, S8, ZERO
+9D0009C0  8FBE000C   LW S8, 12(SP)
+9D0009C4  27BD0010   ADDIU SP, SP, 16
+9D0009C8  03E00008   JR RA
+9D0009CC  00000000   NOP
+55:                  
+56:                  // Zip display zip (zero) since.  Since you really cant see zero on the
+57:                  // LEDs, zip will quickly sequence from LSB to MSB indicating a zero
+58:                  // is in its place.  Note that this is also used to display a break in 
+59:                  // the data.
+60:                  static void zip()
+61:                  {
+9D0009D0  27BDFFE0   ADDIU SP, SP, -32
+9D0009D4  AFBF001C   SW RA, 28(SP)
+9D0009D8  AFBE0018   SW S8, 24(SP)
+9D0009DC  03A0F021   ADDU S8, SP, ZERO
+62:                      int i;
+63:                      for (i=0;i < 4;i++)
+9D0009E0  AFC00010   SW ZERO, 16(S8)
+9D0009E4  0B40028F   J 0x9D000A3C
+9D0009E8  00000000   NOP
+9D000A30  8FC20010   LW V0, 16(S8)
+9D000A34  24420001   ADDIU V0, V0, 1
+9D000A38  AFC20010   SW V0, 16(S8)
+9D000A3C  8FC20010   LW V0, 16(S8)
+9D000A40  28420004   SLTI V0, V0, 4
+9D000A44  1440FFE9   BNE V0, ZERO, 0x9D0009EC
+9D000A48  00000000   NOP
+64:                      {
+65:                          PORTBSET = 1 << (10 + i);
+9D0009EC  8FC20010   LW V0, 16(S8)
+9D0009F0  2442000A   ADDIU V0, V0, 10
+9D0009F4  24030001   ADDIU V1, ZERO, 1
+9D0009F8  00431004   SLLV V0, V1, V0
+9D0009FC  00401821   ADDU V1, V0, ZERO
+9D000A00  3C02BF88   LUI V0, -16504
+9D000A04  AC436058   SW V1, 24664(V0)
+66:                          delayxMS(40);
+9D000A08  24040028   ADDIU A0, ZERO, 40
+9D000A0C  0F40025C   JAL delayxMS
+9D000A10  00000000   NOP
+67:                          PORTBCLR = 1 << (10+i);
+9D000A14  8FC20010   LW V0, 16(S8)
+9D000A18  2442000A   ADDIU V0, V0, 10
+9D000A1C  24030001   ADDIU V1, ZERO, 1
+9D000A20  00431004   SLLV V0, V1, V0
+9D000A24  00401821   ADDU V1, V0, ZERO
+9D000A28  3C02BF88   LUI V0, -16504
+9D000A2C  AC436054   SW V1, 24660(V0)
+68:                      }        
+69:                      
+70:                  }
+9D000A4C  03C0E821   ADDU SP, S8, ZERO
+9D000A50  8FBF001C   LW RA, 28(SP)
+9D000A54  8FBE0018   LW S8, 24(SP)
+9D000A58  27BD0020   ADDIU SP, SP, 32
+9D000A5C  03E00008   JR RA
+9D000A60  00000000   NOP
+71:                  
+72:                  // BLinks out 8 bits, MSB (nibble) followed by the LSB (nibble))
+73:                  // byte is the byte to blink out
+74:                  // Delay, if set to non zero will cause a 1 second delay before
+75:                  // starting.
+76:                  void blink8Bits (unsigned char byte, int delay)
+77:                  {
+9D000A64  27BDFFE0   ADDIU SP, SP, -32
+9D000A68  AFBF001C   SW RA, 28(SP)
+9D000A6C  AFBE0018   SW S8, 24(SP)
+9D000A70  03A0F021   ADDU S8, SP, ZERO
+9D000A74  00801021   ADDU V0, A0, ZERO
+9D000A78  AFC50024   SW A1, 36(S8)
+9D000A7C  A3C20020   SB V0, 32(S8)
+78:                      int bitsToLight;
+79:                      int i;
+80:                      
+81:                   
+82:                                // MSB                       LSB
+83:                      PORTBCLR = (LED4) | (LED3) | (LED2) | (LED1);
+9D000A80  3C02BF88   LUI V0, -16504
+9D000A84  24033C00   ADDIU V1, ZERO, 15360
+9D000A88  AC436054   SW V1, 24660(V0)
+84:                   
+85:                      // Delay if this was called all by itself
+86:                      if (delay)
+9D000A8C  8FC20024   LW V0, 36(S8)
+9D000A90  10400004   BEQ V0, ZERO, 0x9D000AA4
+9D000A94  00000000   NOP
+87:                          delayxMS(1000);
+9D000A98  240403E8   ADDIU A0, ZERO, 1000
+9D000A9C  0F40025C   JAL delayxMS
+9D000AA0  00000000   NOP
+88:                  
+89:                      // Light the MSB
+90:                      bitsToLight = LEDMap[ (byte & 0xF0) >> 4];
+9D000AA4  93C20020   LBU V0, 32(S8)
+9D000AA8  00021102   SRL V0, V0, 4
+9D000AAC  304200FF   ANDI V0, V0, 255
+9D000AB0  00401821   ADDU V1, V0, ZERO
+9D000AB4  3C02A000   LUI V0, -24576
+9D000AB8  00031840   SLL V1, V1, 1
+9D000ABC  24421240   ADDIU V0, V0, 4672
+9D000AC0  00621021   ADDU V0, V1, V0
+9D000AC4  94420000   LHU V0, 0(V0)
+9D000AC8  AFC20010   SW V0, 16(S8)
+91:                      if (bitsToLight)
+9D000ACC  8FC20010   LW V0, 16(S8)
+9D000AD0  10400006   BEQ V0, ZERO, 0x9D000AEC
+9D000AD4  00000000   NOP
+92:                          PORTBSET = bitsToLight;
+9D000AD8  8FC30010   LW V1, 16(S8)
+9D000ADC  3C02BF88   LUI V0, -16504
+9D000AE0  AC436058   SW V1, 24664(V0)
+9D000AE4  0B4002BD   J 0x9D000AF4
+9D000AE8  00000000   NOP
+93:                      else // for zero
+94:                      {
+95:                          zip();
+9D000AEC  0F400274   JAL zip
+9D000AF0  00000000   NOP
+96:                      }
+97:                      
+98:                      // Wait and clear those bits
+99:                      delayxMS(4000);
+9D000AF4  24040FA0   ADDIU A0, ZERO, 4000
+9D000AF8  0F40025C   JAL delayxMS
+9D000AFC  00000000   NOP
+100:                     PORTBCLR = (LED4) | (LED3) | (LED2) | (LED1);
+9D000B00  3C02BF88   LUI V0, -16504
+9D000B04  24033C00   ADDIU V1, ZERO, 15360
+9D000B08  AC436054   SW V1, 24660(V0)
+101:                     delayxMS(600); // small delay
+9D000B0C  24040258   ADDIU A0, ZERO, 600
+9D000B10  0F40025C   JAL delayxMS
+9D000B14  00000000   NOP
+102:                     
+103:                     // Light the LSB
+104:                     bitsToLight = LEDMap[ byte & 0x0F];
+9D000B18  93C20020   LBU V0, 32(S8)
+9D000B1C  3043000F   ANDI V1, V0, 15
+9D000B20  3C02A000   LUI V0, -24576
+9D000B24  00031840   SLL V1, V1, 1
+9D000B28  24421240   ADDIU V0, V0, 4672
+9D000B2C  00621021   ADDU V0, V1, V0
+9D000B30  94420000   LHU V0, 0(V0)
+9D000B34  AFC20010   SW V0, 16(S8)
+105:                     if (bitsToLight)
+9D000B38  8FC20010   LW V0, 16(S8)
+9D000B3C  10400006   BEQ V0, ZERO, 0x9D000B58
+9D000B40  00000000   NOP
+106:                         PORTBSET = bitsToLight;
+9D000B44  8FC30010   LW V1, 16(S8)
+9D000B48  3C02BF88   LUI V0, -16504
+9D000B4C  AC436058   SW V1, 24664(V0)
+9D000B50  0B4002D8   J 0x9D000B60
+9D000B54  00000000   NOP
+107:                     else // for zero
+108:                     {
+109:                         zip();
+9D000B58  0F400274   JAL zip
+9D000B5C  00000000   NOP
+110:                     }
+111:                     
+112:                     // Again wait and clear.
+113:                     delayxMS(3000);
+9D000B60  24040BB8   ADDIU A0, ZERO, 3000
+9D000B64  0F40025C   JAL delayxMS
+9D000B68  00000000   NOP
+114:                     PORTBCLR = (LED4) | (LED3) | (LED2) | (LED1);    
+9D000B6C  3C02BF88   LUI V0, -16504
+9D000B70  24033C00   ADDIU V1, ZERO, 15360
+9D000B74  AC436054   SW V1, 24660(V0)
+115:                  }
+9D000B78  03C0E821   ADDU SP, S8, ZERO
+9D000B7C  8FBF001C   LW RA, 28(SP)
+9D000B80  8FBE0018   LW S8, 24(SP)
+9D000B84  27BD0020   ADDIU SP, SP, 32
+9D000B88  03E00008   JR RA
+9D000B8C  00000000   NOP
+116:                 
+117:                 // BLinks out 16 bits, MSB (byte) followed by the LSB (byte))
+118:                 // byte is the byte to blink out.  Note this uses blink8bits())
+119:                 // Delay, if set to non zero will cause a 1 second delay before
+120:                 // starting.
+121:                 // word, short word to display
+122:                 // Delay, if set to non zero will cause a 1 second delay before
+123:                 // starting.
+124:                 void blink16Bits( unsigned short int word, int delay)
+125:                 {
+9D000B90  27BDFFE8   ADDIU SP, SP, -24
+9D000B94  AFBF0014   SW RA, 20(SP)
+9D000B98  AFBE0010   SW S8, 16(SP)
+9D000B9C  03A0F021   ADDU S8, SP, ZERO
+9D000BA0  00801021   ADDU V0, A0, ZERO
+9D000BA4  AFC5001C   SW A1, 28(S8)
+9D000BA8  A7C20018   SH V0, 24(S8)
+126:                     if (delay)
+9D000BAC  8FC2001C   LW V0, 28(S8)
+9D000BB0  10400004   BEQ V0, ZERO, 0x9D000BC4
+9D000BB4  00000000   NOP
+127:                         delayxMS(1000);
+9D000BB8  240403E8   ADDIU A0, ZERO, 1000
+9D000BBC  0F40025C   JAL delayxMS
+9D000BC0  00000000   NOP
+128:                 
+129:                     // blink8Bits MSB byte passing delay parameter is always noDelay =0
+130:                     blink8Bits(word >> 8,0);
+9D000BC4  97C20018   LHU V0, 24(S8)
+9D000BC8  00021202   SRL V0, V0, 8
+9D000BCC  3042FFFF   ANDI V0, V0, -1
+9D000BD0  304200FF   ANDI V0, V0, 255
+9D000BD4  00402021   ADDU A0, V0, ZERO
+9D000BD8  00002821   ADDU A1, ZERO, ZERO
+9D000BDC  0F400299   JAL blink8Bits
+9D000BE0  00000000   NOP
+131:                 
+132:                     // Delineate between each byte
+133:                     delayxMS(1000);
+9D000BE4  240403E8   ADDIU A0, ZERO, 1000
+9D000BE8  0F40025C   JAL delayxMS
+9D000BEC  00000000   NOP
+134:                     zip();
+9D000BF0  0F400274   JAL zip
+9D000BF4  00000000   NOP
+135:                     zip();
+9D000BF8  0F400274   JAL zip
+9D000BFC  00000000   NOP
+136:                     zip();
+9D000C00  0F400274   JAL zip
+9D000C04  00000000   NOP
+137:                     delayxMS(1000);
+9D000C08  240403E8   ADDIU A0, ZERO, 1000
+9D000C0C  0F40025C   JAL delayxMS
+9D000C10  00000000   NOP
+138:                 
+139:                     // blink8Bits LSB byte passing delay parameter is always nonDelay = 0
+140:                     blink8Bits(word & 0x00FF,0);
+9D000C14  97C20018   LHU V0, 24(S8)
+9D000C18  304200FF   ANDI V0, V0, 255
+9D000C1C  00402021   ADDU A0, V0, ZERO
+9D000C20  00002821   ADDU A1, ZERO, ZERO
+9D000C24  0F400299   JAL blink8Bits
+9D000C28  00000000   NOP
+141:                 }
+9D000C2C  03C0E821   ADDU SP, S8, ZERO
+9D000C30  8FBF0014   LW RA, 20(SP)
+9D000C34  8FBE0010   LW S8, 16(SP)
+9D000C38  27BD0018   ADDIU SP, SP, 24
+9D000C3C  03E00008   JR RA
+9D000C40  00000000   NOP
+142:                 
+143:                 // BLinks out 32 bits, MSB (nibble) followed by the LSB (nibble))
+144:                 // Note this uses blink16bits()
+145:                 // byte is the long word to blink out.  
+146:                 // 
+147:                 void blink32Bits( unsigned longWord)
+148:                 {
+9D000C44  27BDFFE8   ADDIU SP, SP, -24
+9D000C48  AFBF0014   SW RA, 20(SP)
+9D000C4C  AFBE0010   SW S8, 16(SP)
+9D000C50  03A0F021   ADDU S8, SP, ZERO
+9D000C54  AFC40018   SW A0, 24(S8)
+149:                     // blink16Bits msb word
+150:                     delayxMS(1000);
+9D000C58  240403E8   ADDIU A0, ZERO, 1000
+9D000C5C  0F40025C   JAL delayxMS
+9D000C60  00000000   NOP
+151:                     blink16Bits( longWord >> 16,0);
+9D000C64  8FC20018   LW V0, 24(S8)
+9D000C68  00021402   SRL V0, V0, 16
+9D000C6C  3042FFFF   ANDI V0, V0, -1
+9D000C70  00402021   ADDU A0, V0, ZERO
+9D000C74  00002821   ADDU A1, ZERO, ZERO
+9D000C78  0F4002E4   JAL blink16Bits
+9D000C7C  00000000   NOP
+152:                     
+153:                     // Break up words
+154:                     delayxMS(1000);
+9D000C80  240403E8   ADDIU A0, ZERO, 1000
+9D000C84  0F40025C   JAL delayxMS
+9D000C88  00000000   NOP
+155:                     zip();
+9D000C8C  0F400274   JAL zip
+9D000C90  00000000   NOP
+156:                     zip();
+9D000C94  0F400274   JAL zip
+9D000C98  00000000   NOP
+157:                     zip();
+9D000C9C  0F400274   JAL zip
+9D000CA0  00000000   NOP
+158:                     zip();
+9D000CA4  0F400274   JAL zip
+9D000CA8  00000000   NOP
+159:                     zip();
+9D000CAC  0F400274   JAL zip
+9D000CB0  00000000   NOP
+160:                     zip();
+9D000CB4  0F400274   JAL zip
+9D000CB8  00000000   NOP
+161:                     delayxMS(1000);
+9D000CBC  240403E8   ADDIU A0, ZERO, 1000
+9D000CC0  0F40025C   JAL delayxMS
+9D000CC4  00000000   NOP
+162:                 
+163:                     // blink16Bits lsb word 
+164:                     blink16Bits(longWord & 0x0FFFF,0);
+9D000CC8  8FC20018   LW V0, 24(S8)
+9D000CCC  3042FFFF   ANDI V0, V0, -1
+9D000CD0  00402021   ADDU A0, V0, ZERO
+9D000CD4  00002821   ADDU A1, ZERO, ZERO
+9D000CD8  0F4002E4   JAL blink16Bits
+9D000CDC  00000000   NOP
+165:                 }
+9D000CE0  03C0E821   ADDU SP, S8, ZERO
+9D000CE4  8FBF0014   LW RA, 20(SP)
+9D000CE8  8FBE0010   LW S8, 16(SP)
+9D000CEC  27BD0018   ADDIU SP, SP, 24
+9D000CF0  03E00008   JR RA
+9D000CF4  00000000   NOP
