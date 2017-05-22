@@ -30,6 +30,7 @@
 #pragma config FCKSM        = CSDCMD
 #pragma config OSCIOFNC     = OFF
 
+// Lee made this one change.
 
 
 // Create macros for each reading and writing
